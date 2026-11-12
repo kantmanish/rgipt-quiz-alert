@@ -14,13 +14,15 @@ MP3_FILE = "alarm.mp3"
 
 # Class schedule settings (Indian Standard Time)
 IST = timezone(timedelta(hours=5, minutes=30))
-START_HOUR = 8          # 10:00 AM IST
-END_HOUR = 20            # 7:00 PM IST (19:00)
+START_HOUR = 8           # 8:00 AM IST
+END_HOUR = 20            # 8:00 PM IST (20:00)
 MAX_SHIFT_MINUTES = 268  # Exit cleanly after ~4h 28m before GitHub's 280m timeout
+
 
 def is_class_time():
     now = datetime.now(IST)
     return (0 <= now.weekday() <= 4) and (START_HOUR <= now.hour < END_HOUR)
+
 
 def play_custom_mp3():
     if not os.path.exists(MP3_FILE):
@@ -40,6 +42,7 @@ def play_custom_mp3():
     except Exception as e:
         print("Local MP3 playback skipped:", e)
 
+
 def send_notification(title, message, alarm_level="info"):
     now_str = datetime.now(IST).strftime("%H:%M:%S")
     print(f"\n[{now_str}] [{alarm_level.upper()}] {title}\n -> {message}")
@@ -51,22 +54,31 @@ def send_notification(title, message, alarm_level="info"):
         "started": "rotating_light,warning,alarm_clock"
     }
 
-    try:
-        requests.post(
-            f"https://ntfy.sh/{NTFY_TOPIC}",
-            data=message.encode("utf-8"),
-            headers={
-                "Title": title,
-                "Priority": priority_map.get(alarm_level, "high"),
-                "Tags": tags_map.get(alarm_level, "bell")
-            },
-            timeout=5
-        )
-    except Exception as e:
-        print("Phone notification error:", e)
+    # Fire 3 rapid bursts for 'started' so picking up the phone doesn't silence the alarm
+    burst_count = 3 if alarm_level == "started" else 1
+
+    for i in range(burst_count):
+        try:
+            burst_title = f"{title} ({i + 1}/{burst_count})" if burst_count > 1 else title
+            requests.post(
+                f"https://ntfy.sh/{NTFY_TOPIC}",
+                data=message.encode("utf-8"),
+                headers={
+                    "Title": burst_title,
+                    "Priority": priority_map.get(alarm_level, "high"),
+                    "Tags": tags_map.get(alarm_level, "bell")
+                },
+                timeout=5
+            )
+        except Exception as e:
+            print("Phone notification error:", e)
+
+        if i < burst_count - 1:
+            time.sleep(4)
 
     if alarm_level in ("published", "started"):
         play_custom_mp3()
+
 
 def get_quiz_state(q):
     status = str(q.get("status") or "").lower()
@@ -89,6 +101,7 @@ def get_quiz_state(q):
 
     return "PUBLISHED"
 
+
 def login(session):
     payload = {
         "identifier": LOGIN_ID,
@@ -103,6 +116,7 @@ def login(session):
     session.headers.update({"Authorization": f"Bearer {token}"})
     print(f"[{datetime.now(IST).strftime('%H:%M:%S')}] Logged in successfully.")
     return time.time()
+
 
 def start_monitoring():
     shift_start = time.time()
@@ -123,13 +137,13 @@ def start_monitoring():
             print(f"[{datetime.now(IST).strftime('%H:%M:%S')}] Shift complete. Exiting cleanly.")
             sys.exit(0)
 
-        # 2. If classes ended for the day (past 7:00 PM IST), exit cleanly
+        # 2. If classes ended for the day (past 8:00 PM IST), exit cleanly
         now = datetime.now(IST)
         if now.weekday() > 4 or now.hour >= END_HOUR:
             print(f"[{now.strftime('%a %I:%M %p')}] Past class hours ({END_HOUR}:00). Exiting cleanly.")
             sys.exit(0)
 
-        # 3. If started slightly before 10:00 AM, wait until 10:00 AM
+        # 3. If started slightly before 8:00 AM, wait until 8:00 AM
         if not is_class_time():
             print(f"[{now.strftime('%H:%M:%S')}] Waiting for {START_HOUR}:00 AM IST...")
             time.sleep(30)
@@ -208,6 +222,7 @@ def start_monitoring():
             print(f"[{datetime.now(IST).strftime('%H:%M:%S')}] Check error: {e}")
 
         time.sleep(CHECK_INTERVAL)
+
 
 if __name__ == "__main__":
     start_monitoring()
