@@ -1,0 +1,31 @@
+name: RGIPT Quiz Monitor
+
+on:
+  workflow_dispatch: # Lets you start it manually anytime with 1 click
+  schedule:
+    # Runs automatically Mon-Fri at 10:00 AM IST (04:30 UTC) and 2:30 PM IST (09:00 UTC)
+    - cron: '30 4 * * 1-5'
+    - cron: '0 9 * * 1-5'
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 280 # Runs for ~4.5 hours per shift to cover 10 AM - 7 PM IST
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install requests
+        run: pip install requests
+
+      - name: Run Quiz Notifier
+        env:
+          LMS_USER: "24CS2025"
+          LMS_PASSWORD: ${{ secrets.LMS_PASSWORD }}
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+        run: python -u quiz_notifier.py
