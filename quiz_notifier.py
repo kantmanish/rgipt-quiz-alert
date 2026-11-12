@@ -14,8 +14,8 @@ MP3_FILE = "alarm.mp3"
 
 # Class schedule settings (Indian Standard Time)
 IST = timezone(timedelta(hours=5, minutes=30))
-START_HOUR = 10          # 10:00 AM IST
-END_HOUR = 19            # 7:00 PM IST (19:00)
+START_HOUR = 8          # 10:00 AM IST
+END_HOUR = 20            # 7:00 PM IST (19:00)
 MAX_SHIFT_MINUTES = 268  # Exit cleanly after ~4h 28m before GitHub's 280m timeout
 
 def is_class_time():
