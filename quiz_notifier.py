@@ -9,32 +9,18 @@ BASE_URL = "https://rgipterp.in"
 LOGIN_ID = os.getenv("LMS_USER", "24CS2025")
 PASSWORD = os.getenv("LMS_PASSWORD", "YOUR_PASSWORD")
 NTFY_TOPIC = os.getenv("NTFY_TOPIC", "rgipt_quiz_24cs2025_secret")
-CHECK_INTERVAL = 15                       # Check every 15 seconds during class
-MP3_FILE = "alarm.mp3"                      # Optional local alarm.mp3 in the same folder
+CHECK_INTERVAL = 15
+MP3_FILE = "alarm.mp3"
 
 # Class schedule settings (Indian Standard Time)
 IST = timezone(timedelta(hours=5, minutes=30))
-START_HOUR = 10   # 10:00 AM IST
-END_HOUR = 19     # 7:00 PM IST (19:00)
+START_HOUR = 10          # 10:00 AM IST
+END_HOUR = 19            # 7:00 PM IST (19:00)
+MAX_SHIFT_MINUTES = 268  # Exit cleanly after ~4h 28m before GitHub's 280m timeout
 
 def is_class_time():
-    """Returns True only on Monday-Friday (0-4) between 10:00 AM and 6:00 PM IST."""
     now = datetime.now(IST)
-    is_weekday = 0 <= now.weekday() <= 4  # 0 = Monday, 4 = Friday, 5 = Saturday, 6 = Sunday
-    is_within_hours = START_HOUR <= now.hour < END_HOUR
-    return is_weekday and is_within_hours
-
-def next_class_start_str():
-    """Returns a readable string of when the next 10:00 AM class window starts."""
-    now = datetime.now(IST)
-    target = now.replace(hour=START_HOUR, minute=0, second=0, microsecond=0)
-    if now.weekday() <= 4 and now.hour < START_HOUR:
-        return target.strftime("%A at %I:%M %p")
-    days_ahead = 1
-    while (now + timedelta(days=days_ahead)).weekday() > 4:
-        days_ahead += 1
-    next_day = (now + timedelta(days=days_ahead)).replace(hour=START_HOUR, minute=0, second=0, microsecond=0)
-    return next_day.strftime("%A at %I:%M %p")
+    return (0 <= now.weekday() <= 4) and (START_HOUR <= now.hour < END_HOUR)
 
 def play_custom_mp3():
     if not os.path.exists(MP3_FILE):
@@ -119,36 +105,37 @@ def login(session):
     return time.time()
 
 def start_monitoring():
+    shift_start = time.time()
     session = requests.Session()
     last_login = 0
     known_quizzes = {}
     first_run = True
-    was_sleeping = False
 
     send_notification(
         "RGIPT Quiz Monitor Active",
-        f"Scheduled for Mon-Fri {START_HOUR}:00 to {END_HOUR}:00 IST ({LOGIN_ID}).",
+        f"Shift started for {LOGIN_ID} (Mon-Fri {START_HOUR}:00-{END_HOUR}:00 IST).",
         alarm_level="info"
     )
 
     while True:
-        # Pause checking outside Monday-Friday 10:00 AM - 6:00 PM IST
+        # 1. Exit cleanly before GitHub's timeout limit
+        if (time.time() - shift_start) >= (MAX_SHIFT_MINUTES * 60):
+            print(f"[{datetime.now(IST).strftime('%H:%M:%S')}] Shift complete. Exiting cleanly.")
+            sys.exit(0)
+
+        # 2. If classes ended for the day (past 7:00 PM IST), exit cleanly
+        now = datetime.now(IST)
+        if now.weekday() > 4 or now.hour >= END_HOUR:
+            print(f"[{now.strftime('%a %I:%M %p')}] Past class hours ({END_HOUR}:00). Exiting cleanly.")
+            sys.exit(0)
+
+        # 3. If started slightly before 10:00 AM, wait until 10:00 AM
         if not is_class_time():
-            if not was_sleeping:
-                now_str = datetime.now(IST).strftime("%a %I:%M %p")
-                print(f"[{now_str}] Outside class hours. Sleeping until {next_class_start_str()}...")
-                was_sleeping = True
-            time.sleep(60)
+            print(f"[{now.strftime('%H:%M:%S')}] Waiting for {START_HOUR}:00 AM IST...")
+            time.sleep(30)
             continue
 
-        # Waking up at 10:00 AM (or starting during class hours)
-        if was_sleeping:
-            print(f"[{datetime.now(IST).strftime('%H:%M:%S')}] Class hours started! Resuming quiz checks...")
-            was_sleeping = False
-            last_login = 0  # Force a fresh login
-
         try:
-            # Login if needed or refresh every 12 minutes before the 15-min token expires
             if time.time() - last_login > 720:
                 last_login = login(session)
 
