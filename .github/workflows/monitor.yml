@@ -3,26 +3,21 @@ name: RGIPT Quiz Monitor
 on:
   workflow_dispatch:
   schedule:
-    # Staggered morning, midday & afternoon triggers (UTC) to cover 8:00 AM - 8:00 PM IST
-    - cron: '12 2 * * 1-5'   # 7:42 AM IST (Pre-starts before 8:00 AM)
-    - cron: '27 2 * * 1-5'   # 7:57 AM IST (Backup morning start)
-    - cron: '42 2 * * 1-5'   # 8:12 AM IST (Second backup morning start)
-    - cron: '57 6 * * 1-5'   # 12:27 PM IST (Midday shift backup)
-    - cron: '12 11 * * 1-5'  # 4:42 PM IST (Evening shift backup until 8:00 PM)
+    - cron: '30 2 * * 1-5'    # 08:00 AM IST (Mon-Fri)
+    - cron: '15 8 * * 1-5'    # 01:45 PM IST (Mon-Fri)
+    - cron: '0 14 * * 1-5'    # 07:30 PM IST (Mon-Fri)
 
-permissions:
-  actions: write
-  contents: read
+concurrency:
+  group: rgipt-quiz-monitor
+  cancel-in-progress: true
 
 jobs:
   monitor:
     runs-on: ubuntu-latest
-    concurrency:
-      group: rgipt-quiz-monitor-single
-      cancel-in-progress: false
-    timeout-minutes: 280
+    timeout-minutes: 345  # 5h 45m (stops cleanly before GitHub's 6-hour hard kill)
+
     steps:
-      - name: Checkout code
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Set up Python
@@ -30,24 +25,12 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install requests
+      - name: Install dependencies
         run: pip install requests
 
       - name: Run Quiz Notifier
         env:
-          LMS_USER: "24CS2025"
+          LMS_USERNAME: ${{ secrets.LMS_USERNAME }}
           LMS_PASSWORD: ${{ secrets.LMS_PASSWORD }}
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
         run: python -u quiz_notifier.py
-
-      - name: Auto-Chain Next Shift (8 AM - 8 PM IST)
-        if: always()
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          HOUR_IST=$(TZ='Asia/Kolkata' date +%H)
-          DAY_IST=$(TZ='Asia/Kolkata' date +%u)
-          if [ "$DAY_IST" -le 5 ] && [ "$HOUR_IST" -ge 8 ] && [ "$HOUR_IST" -lt 20 ]; then
-            echo "Still within 8 AM - 8 PM IST. Automatically starting next shift..."
-            gh workflow run monitor.yml
-          fi
